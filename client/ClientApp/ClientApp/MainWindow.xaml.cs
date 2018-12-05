@@ -16,6 +16,7 @@ using System.IO;
 using ClientApp.Models;
 using System.Windows.Forms;
 using System.Net.Sockets;
+using System.Net;
 
 namespace ClientApp
 {
@@ -26,6 +27,9 @@ namespace ClientApp
     {
         string videoCache;
         List<string> logs = new List<string>();
+        TcpClient tcpClient = new TcpClient();
+        NetworkStream stream;
+
 
         public MainWindow()
         {
@@ -33,58 +37,67 @@ namespace ClientApp
         }
 
         #region server logic
-        static void Connect(String server, String message, string ip, string pport)
+        private void Connect(IPAddress serverIP, Int32 serverPort)
         {
             try
             {
-                // Create a TcpClient.
-                // Note, for this client to work you need to have a TcpServer 
-                // connected to the same address as specified by the server, port
-                // combination.
-                Int32 port = 13000;
-                TcpClient client = new TcpClient(server, port);
-
-                // Translate the passed message into ASCII and store it as a Byte array.
-                Byte[] data = System.Text.Encoding.ASCII.GetBytes(message);
+                LogEvent("Connecting to server");
+                tcpClient.Connect(serverIP, serverPort);
 
                 // Get a client stream for reading and writing.
-                //  Stream stream = client.GetStream();
-
-                NetworkStream stream = client.GetStream();
-
-                // Send the message to the connected TcpServer. 
-                stream.Write(data, 0, data.Length);
-
-                Console.WriteLine("Sent: {0}", message);
-
-                // Receive the TcpServer.response.
-
-                // Buffer to store the response bytes.
-                data = new Byte[256];
-
-                // String to store the response ASCII representation.
-                String responseData = String.Empty;
-
-                // Read the first batch of the TcpServer response bytes.
-                Int32 bytes = stream.Read(data, 0, data.Length);
-                responseData = System.Text.Encoding.ASCII.GetString(data, 0, bytes);
-                Console.WriteLine("Received: {0}", responseData);
-
-                // Close everything.
-                stream.Close();
-                client.Close();
+                stream = tcpClient.GetStream();
             }
             catch (ArgumentNullException e)
             {
-                Console.WriteLine("ArgumentNullException: {0}", e);
+                LogEvent($"ArgumentNullException: {e}");
+                SetDefaultWindowState();
             }
             catch (SocketException e)
             {
-                Console.WriteLine("SocketException: {0}", e);
+                LogEvent($"SocketException: {e}");
+                SetDefaultWindowState();
             }
+        }
+        private void SendMessage(string message)
+        {
+            // Translate the passed message into ASCII and store it as a Byte array.
+            Byte[] data = System.Text.Encoding.ASCII.GetBytes(message);
 
-            Console.WriteLine("\n Press Enter to continue...");
-            Console.Read();
+            // Send the message to the connected TcpServer. 
+            stream.Write(data, 0, data.Length);
+
+            LogEvent($"Sent: {message}");
+        }
+        private bool Request(RequestActions requestActions)
+        {
+            string action = requestActions.ToString();
+
+            // Translate the passed message into ASCII and store it as a Byte array.
+            Byte[] data = System.Text.Encoding.ASCII.GetBytes(action);
+
+            // Send the message to the connected TcpServer. 
+            stream.Write(data, 0, data.Length);
+
+            LogEvent($"Sent: {action}");
+
+            // Receive the TcpServer.response.
+
+            // Buffer to store the response bytes.
+            data = new Byte[256];
+
+            // String to store the response ASCII representation.
+            String responseData = String.Empty;
+
+            // Read the first batch of the TcpServer response bytes.
+            Int32 bytes = stream.Read(data, 0, data.Length);
+            responseData = System.Text.Encoding.ASCII.GetString(data, 0, bytes);
+            LogEvent($"Received: {responseData}");
+
+            if (responseData.Contains("OK"))
+            {
+                return true;
+            }
+            else return false;
         }
 
         #endregion
@@ -92,19 +105,57 @@ namespace ClientApp
         #region interaction logic
         private void DownloadEntity()
         {
-
+            if (Request(RequestActions.DownloadAnimal))
+                SendMessage("bedzie download");
         }
         private void UploadEntity(Entity entity)
         {
-
+            if (Request(RequestActions.UploadAnimal))
+                SendMessage("bedzie upload");
+        }
+        private void DisconnectButtonClick(object sender, RoutedEventArgs e)
+        {
+            tcpClient.Close();
+            SetDefaultWindowState();
+            Environment.Exit(0);
         }
         private void ConnectButtonClick(object sender, RoutedEventArgs e)
         {
-            LogEvent("Requested connecting");
-            ConnectButton.IsEnabled = false;
-            CreateCache();
-            SearchButton.IsEnabled = true;
+            bool go = true;
+            Int32 serverPort = 0;
+            IPAddress serverIP = IPAddress.Parse("0.0.0.0");
 
+            LogEvent("Requested connecting");
+            string ipAddress = IPAddressBox.Text;
+            string port = PortBox.Text;
+
+            LogEvent("Parsing IP address and port");
+            try
+            {
+                serverPort = Int32.Parse(port);
+                serverIP = IPAddress.Parse(ipAddress);
+            }
+            catch
+            {
+                LogEvent("Parameters invalid");
+                SetDefaultWindowState();
+                go = false;
+            }
+            if (go)
+            {
+                //window setting
+                DisconnectButton.IsEnabled = true;
+                IPAddressBox.IsEnabled = false;
+                PortBox.IsEnabled = false;
+                ConnectButton.IsEnabled = false;
+                SearchButton.IsEnabled = true;
+                UploadFolderPath.IsEnabled = true;
+                ServerBorder.BorderBrush = new SolidColorBrush(Color.FromRgb(0, 200, 108));
+
+                CreateCache();
+
+                Connect(serverIP, serverPort);
+            }
         }
         private void LogEvent(string message)
         {
@@ -114,6 +165,20 @@ namespace ClientApp
         #endregion
 
         #region window logic
+        private void SetDefaultWindowState()
+        {
+            IPAddressBox.IsEnabled = true;
+            PortBox.IsEnabled = true;
+            ServerBorder.BorderBrush = new SolidColorBrush(Color.FromRgb(108,108,108));
+            UploadFolderPath.IsEnabled = false;
+            UploadButton.IsEnabled = false;
+            SearchButton.IsEnabled = false;
+            ConnectButton.IsEnabled = true;
+            IPAddressBox.IsEnabled = true;
+            PortBox.IsEnabled = true;
+            DisconnectButton.IsEnabled = false;
+        }
+
         private void CreateCache()
         {
             LogEvent("Creating Cache");
@@ -194,5 +259,6 @@ namespace ClientApp
             System.Diagnostics.Process.Start(videoCache);
         }
         #endregion
+
     }
 }
