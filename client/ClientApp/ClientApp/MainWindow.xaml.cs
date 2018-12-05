@@ -39,12 +39,14 @@ namespace ClientApp
         #region server logic
         private void Connect(IPAddress serverIP, Int32 serverPort)
         {
+            LogEvent($"*** Requested connecting to a server ***\nIP: {serverIP.ToString()}\nPort: {serverPort.ToString()}");
             try
             {
                 LogEvent("Connecting to server");
                 tcpClient.Connect(serverIP, serverPort);
 
                 // Get a client stream for reading and writing.
+                LogEvent("Initialising stream");
                 stream = tcpClient.GetStream();
             }
             catch (ArgumentNullException e)
@@ -60,6 +62,8 @@ namespace ClientApp
         }
         private void SendMessage(string message)
         {
+            LogEvent("*** Sending a message ***");
+
             // Translate the passed message into ASCII and store it as a Byte array.
             Byte[] data = System.Text.Encoding.ASCII.GetBytes(message);
 
@@ -68,22 +72,11 @@ namespace ClientApp
 
             LogEvent($"Sent: {message}");
         }
-        private bool Request(RequestActions requestActions)
+        private string GetResponse()
         {
-            string action = requestActions.ToString();
-
-            // Translate the passed message into ASCII and store it as a Byte array.
-            Byte[] data = System.Text.Encoding.ASCII.GetBytes(action);
-
-            // Send the message to the connected TcpServer. 
-            stream.Write(data, 0, data.Length);
-
-            LogEvent($"Sent: {action}");
-
-            // Receive the TcpServer.response.
-
+            LogEvent("*** Waiting for response ***");
             // Buffer to store the response bytes.
-            data = new Byte[256];
+            Byte[] data = new Byte[256];
 
             // String to store the response ASCII representation.
             String responseData = String.Empty;
@@ -92,12 +85,27 @@ namespace ClientApp
             Int32 bytes = stream.Read(data, 0, data.Length);
             responseData = System.Text.Encoding.ASCII.GetString(data, 0, bytes);
             LogEvent($"Received: {responseData}");
+            return responseData;
+        }
+        private bool Request(RequestActions requestActions)
+        {
+            LogEvent($"*** Requested action {requestActions.ToString()} from server ***");
+            string action = requestActions.ToString();
 
-            if (responseData.Contains("OK"))
+            //Send info about request
+            SendMessage(action);
+
+            // Receive the TcpServer.response.
+            if (GetResponse().Contains("OK"))
             {
+                LogEvent($"Initialising action {requestActions.ToString()}");
                 return true;
             }
-            else return false;
+            else
+            {
+                LogEvent($"Server denied action {requestActions.ToString()}");
+                return false;
+            }
         }
 
         #endregion
